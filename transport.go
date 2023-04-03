@@ -17,7 +17,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"internal/godebug"
 	"io"
 	"log"
 	"net"
@@ -29,13 +28,14 @@ import (
 	"time"
 
 	"github.com/3JoB/unsafeConvert"
+	"github.com/andybalholm/brotli"
 	"github.com/goccy/go-reflect"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http/httpproxy"
 
-	"github.com/andybalholm/brotli"
 	"github.com/3JoB/nhtp/httptrace"
 	"github.com/3JoB/nhtp/internal/ascii"
+	"github.com/3JoB/nhtp/internal/godebug"
 )
 
 // DefaultTransport is the default implementation of Transport and is
@@ -197,7 +197,7 @@ type Transport struct {
 	// uncompressed.
 	DisableCompression bool
 
-	// After enabling, if `DisableCompression` is false, 
+	// After enabling, if `DisableCompression` is false,
 	// it will be automatically replaced by brotli
 	EnableBrotliCompression bool
 
@@ -2511,6 +2511,7 @@ type requestAndChan struct {
 	// added the Accept-Encoding gzip header. If the Transport
 	// set it, only then do we transparently decode the gzip.
 	addedGzip bool
+
 	addedBr bool
 
 	// Optional blocking chan for Expect: 100-continue (for send).
@@ -2649,7 +2650,7 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 		cancelKey:  req.cancelKey,
 		ch:         resc,
 		addedGzip:  requestedGzip,
-		addedBr: requestedBr,
+		addedBr:    requestedBr,
 		continueCh: continueCh,
 		callerGone: gone,
 	}
@@ -2887,9 +2888,9 @@ func (gz *gzipReader) Close() error {
 }
 
 type brReader struct {
-	_    incomparable
-	body *bodyEOFSignal // underlying HTTP/1 response body framing
-	br   *brotli.Reader     // lazily-initialized br reader
+	_     incomparable
+	body  *bodyEOFSignal // underlying HTTP/1 response body framing
+	br    *brotli.Reader // lazily-initialized br reader
 	brerr error          // any error from br.Reader; sticky
 }
 

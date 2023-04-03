@@ -13,7 +13,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"internal/godebug"
 	"io"
 	"log"
 	"net"
@@ -31,6 +30,8 @@ import (
 	"github.com/3JoB/unsafeConvert"
 	"golang.org/x/net/http/httpguts"
 	"pgregory.net/rand"
+
+	"github.com/3JoB/nhtp/internal/godebug"
 )
 
 // Errors used by the HTTP server.

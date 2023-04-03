@@ -44,6 +44,7 @@ import (
 
 	errs "github.com/3JoB/ulib/err"
 	"github.com/3JoB/unsafeConvert"
+	"github.com/andybalholm/brotli"
 	"github.com/goccy/go-reflect"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
@@ -51,7 +52,6 @@ import (
 	rand "lukechampine.com/frand"
 	mathrand "pgregory.net/rand"
 
-	"github.com/andybalholm/brotli"
 	"github.com/3JoB/nhtp/httptrace"
 )
 
@@ -7082,6 +7082,7 @@ type http2Transport struct {
 	// explicitly requested gzip it is not automatically
 	// uncompressed.
 	DisableCompression bool
+
 	EnableBrotliCompression bool
 
 	// AllowHTTP, if true, permits HTTP/2 requests using the insecure,
@@ -7346,7 +7347,7 @@ type http2clientStream struct {
 	ID            uint32
 	bufPipe       http2pipe // buffered pipe with the flow-controlled response payload
 	requestedGzip bool
-	requestedBr bool
+	requestedBr   bool
 	isHead        bool
 
 	abortOnce sync.Once
@@ -8613,12 +8614,12 @@ func (cc *http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFram
 // internal error values; they don't escape to callers
 var (
 	// abort request body write; don't send cancel
-	http2errStopReqBodyWrite error = &errs.Err{Op:"http2", Err: "aborting request body write"}
+	http2errStopReqBodyWrite error = &errs.Err{Op: "http2", Err: "aborting request body write"}
 
 	// abort request body write, but send stream reset of cancel.
-	http2errStopReqBodyWriteAndCancel error = &errs.Err{Op:"http2", Err: "canceling request"}
+	http2errStopReqBodyWriteAndCancel error = &errs.Err{Op: "http2", Err: "canceling request"}
 
-	http2errReqBodyTooLong error = &errs.Err{Op:"http2", Err: "request body larger than specified content length"}
+	http2errReqBodyTooLong error = &errs.Err{Op: "http2", Err: "request body larger than specified content length"}
 )
 
 // frameScratchBufferLen returns the length of a buffer to use for
@@ -8947,9 +8948,9 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader, addBrHeade
 		if http2shouldSendReqContentLength(req.Method, contentLength) {
 			f("content-length", strconv.FormatInt(contentLength, 10))
 		}
-		if addBrHeader{
+		if addBrHeader {
 			f("accept-encoding", "br")
-		}else if addGzipHeader {
+		} else if addGzipHeader {
 			f("accept-encoding", "gzip")
 		}
 		if !didUA {
@@ -9331,6 +9332,13 @@ func (rl *http2clientConnReadLoop) processHeaders(f *http2MetaHeadersFrame) erro
 	return nil
 }
 
+var (
+	http2Missing error = &errs.Err{Op: "malformed response from server", Err:"missing status pseudo header"}
+	http2NonStatus error = &errs.Err{Op: "malformed response from server", Err:"malformed non-numeric status pseudo header"}
+	http2TooMany1xx error = &errs.Err{Op: "http2", Err:"too many 1xx informational responses"}
+	http21xxWithEndFlag error = &errs.Err{Op: "http2", Err:"1xx informational response with END_STREAM flag"}
+)
+
 // may return error types nil, or ConnectionError. Any other error value
 // is a StreamError of type ErrCodeProtocol. The returned error in that case
 // is the detail.
@@ -9344,11 +9352,11 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 
 	status := f.PseudoValue("status")
 	if status == "" {
-		return nil, errors.New("malformed response from server: missing status pseudo header")
+		return nil, http2Missing
 	}
 	statusCode, err := strconv.Atoi(status)
 	if err != nil {
-		return nil, errors.New("malformed response from server: malformed non-numeric status pseudo header")
+		return nil, http2NonStatus
 	}
 
 	regularFields := f.RegularFields()
@@ -9390,12 +9398,12 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 
 	if statusCode >= 100 && statusCode <= 199 {
 		if f.StreamEnded() {
-			return nil, errors.New("1xx informational response with END_STREAM flag")
+			return nil, http21xxWithEndFlag
 		}
 		cs.num1xx++
 		const max1xxResponses = 5 // arbitrary bound on number of informational responses, same as net/http
 		if cs.num1xx > max1xxResponses {
-			return nil, errors.New("http2: too many 1xx informational responses")
+			return nil, http2TooMany1xx
 		}
 		if fn := cs.get1xxTraceFunc(); fn != nil {
 			if err := fn(statusCode, textproto.MIMEHeader(header)); err != nil {
@@ -9452,7 +9460,7 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 		res.ContentLength = -1
 		res.Body = &http2brReader{body: res.Body}
 		res.Uncompressed = true
-	}else if cs.requestedGzip && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "gzip") {
+	} else if cs.requestedGzip && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		res.Header.Del("Content-Encoding")
 		res.Header.Del("Content-Length")
 		res.ContentLength = -1
@@ -9496,6 +9504,8 @@ type http2transportResponseBody struct {
 	cs *http2clientStream
 }
 
+var http2ServerDeclared error = &errs.Err{Op: "net/http", Err: "server replied with more than declared Content-Length; truncated"}
+
 func (b http2transportResponseBody) Read(p []byte) (n int, err error) {
 	cs := b.cs
 	cc := cs.cc
@@ -9508,7 +9518,7 @@ func (b http2transportResponseBody) Read(p []byte) (n int, err error) {
 		if int64(n) > cs.bytesRemain {
 			n = int(cs.bytesRemain)
 			if err == nil {
-				err = errors.New("net/http: server replied with more than declared Content-Length; truncated")
+				err = http2ServerDeclared
 				cs.abortStream(err)
 			}
 			cs.readErr = err
@@ -9559,7 +9569,7 @@ func (b http2transportResponseBody) Read(p []byte) (n int, err error) {
 	return
 }
 
-var http2errClosedResponseBody error = &errs.Err{Op:"http2", Err: "response body closed"}
+var http2errClosedResponseBody error = &errs.Err{Op: "http2", Err: "response body closed"}
 
 func (b http2transportResponseBody) Close() error {
 	cs := b.cs
@@ -9982,8 +9992,8 @@ func (cc *http2ClientConn) writeStreamReset(streamID uint32, code http2ErrCode, 
 }
 
 var (
-	http2errResponseHeaderListSize error = &errs.Err{Op:"http2", Err: "response header list larger than advertised limit"}
-	http2errRequestHeaderListSize error = &errs.Err{Op:"http2", Err: "request header list larger than peer's advertised limit"}
+	http2errResponseHeaderListSize error = &errs.Err{Op: "http2", Err: "response header list larger than advertised limit"}
+	http2errRequestHeaderListSize  error = &errs.Err{Op: "http2", Err: "request header list larger than peer's advertised limit"}
 )
 
 func (cc *http2ClientConn) logf(format string, args ...any) {
@@ -10067,10 +10077,10 @@ func (gz *http2gzipReader) Close() error {
 // brReader wraps a response body so it can lazily
 // call br.NewReader on the first call to Read
 type http2brReader struct {
-	_    http2incomparable
-	body io.ReadCloser // underlying Response.Body
-	br   *brotli.Reader  // lazily-initialized br reader
-	brerr error         // sticky error
+	_     http2incomparable
+	body  io.ReadCloser  // underlying Response.Body
+	br    *brotli.Reader // lazily-initialized br reader
+	brerr error          // sticky error
 }
 
 func (br *http2brReader) Read(p []byte) (n int, err error) {

@@ -584,7 +584,7 @@ func (c *Client) Do(req *Request) (*Response, error) {
 
 var (
 	testHookClientDoResult func(retres *Response, reterr error)
-	clientUrlNil error = &errs.Err{Op:"http", Err: "nil Request.URL"}
+	clientUrlNil           error = &errs.Err{Op: "http", Err: "nil Request.URL"}
 )
 
 func (c *Client) do(req *Request) (retres *Response, reterr error) {

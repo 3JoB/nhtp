@@ -9,12 +9,13 @@ package httptrace
 import (
 	"context"
 	"crypto/tls"
-	"internal/nettrace"
 	"net"
 	"net/textproto"
 	"time"
 
 	"github.com/goccy/go-reflect"
+
+	"github.com/3JoB/nhtp/internal/nettrace"
 )
 
 // unique type to prevent assignment.
