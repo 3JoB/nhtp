@@ -48,6 +48,7 @@
         "impls",
         "ireq",
         "ireqhdr",
+        "linkname",
         "Loggerf",
         "mathrand",
         "modtime",
