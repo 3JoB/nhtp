@@ -11,7 +11,7 @@ package http
 
 import (
 	"bufio"
-	"compress/gzip"
+	"bytes"
 	"container/list"
 	"context"
 	"crypto/tls"
@@ -30,6 +30,8 @@ import (
 	"github.com/3JoB/unsafeConvert"
 	"github.com/andybalholm/brotli"
 	"github.com/goccy/go-reflect"
+	"github.com/klauspost/compress/gzip"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http/httpproxy"
 
@@ -200,6 +202,8 @@ type Transport struct {
 	// After enabling, if `DisableCompression` is false,
 	// it will be automatically replaced by brotli
 	EnableBrotliCompression bool
+
+	EnableZstdCompression bool
 
 	// MaxIdleConns controls the maximum number of idle (keep-alive)
 	// connections across all hosts. Zero means no limit.
@@ -2218,18 +2222,12 @@ func (pc *persistConn) readLoop() {
 		}
 
 		resp.Body = body
-		if rc.addedBr && ascii.EqualFold(resp.Header.Get("Content-Encoding"), "br") {
-			resp.Body = &brReader{body: body}
-			resp.Header.Del("Content-Encoding")
-			resp.Header.Del("Content-Length")
-			resp.ContentLength = -1
-			resp.Uncompressed = true
+		if rc.addedZs && ascii.EqualFold(resp.Header.Get("Content-Encoding"), "zstd") {
+			resp.setCompress(&zsReader{body: body})
+		} else if rc.addedBr && ascii.EqualFold(resp.Header.Get("Content-Encoding"), "br") {
+			resp.setCompress(&brReader{body: body})
 		} else if rc.addedGzip && ascii.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
-			resp.Body = &gzipReader{body: body}
-			resp.Header.Del("Content-Encoding")
-			resp.Header.Del("Content-Length")
-			resp.ContentLength = -1
-			resp.Uncompressed = true
+			resp.setCompress(&gzipReader{body: body})
 		}
 
 		select {
@@ -2264,6 +2262,14 @@ func (pc *persistConn) readLoop() {
 
 		testHookReadLoopBeforeNextRead()
 	}
+}
+
+func (resp *Response) setCompress(body io.ReadCloser) {
+	resp.Body = body
+	resp.Header.Del("Content-Encoding")
+	resp.Header.Del("Content-Length")
+	resp.ContentLength = -1
+	resp.Uncompressed = true
 }
 
 func (pc *persistConn) readLoopPeekFailLocked(peekErr error) {
@@ -2514,6 +2520,8 @@ type requestAndChan struct {
 
 	addedBr bool
 
+	addedZs bool
+
 	// Optional blocking chan for Expect: 100-continue (for send).
 	// If the request has an "Expect: 100-continue" header and
 	// the server responds 100 Continue, readLoop send a value
@@ -2590,6 +2598,7 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 	// requested it.
 	requestedGzip := false
 	requestedBr := false
+	requestedZs := false
 	if !pc.t.DisableCompression &&
 		req.Header.Get("Accept-Encoding") == "" &&
 		req.Header.Get("Range") == "" &&
@@ -2606,7 +2615,10 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 		// We don't request gzip if the request is for a range, since
 		// auto-decoding a portion of a gzipped document will just fail
 		// anyway. See https://golang.org/issue/8923
-		if pc.t.EnableBrotliCompression {
+		if pc.t.EnableZstdCompression {
+			requestedZs = true
+			req.extraHeaders().Set("Accept-Encoding", "zstd")
+		} else if pc.t.EnableBrotliCompression {
 			requestedBr = true
 			req.extraHeaders().Set("Accept-Encoding", "br")
 		} else {
@@ -2651,6 +2663,7 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 		ch:         resc,
 		addedGzip:  requestedGzip,
 		addedBr:    requestedBr,
+		addedZs:    requestedZs,
 		continueCh: continueCh,
 		callerGone: gone,
 	}
@@ -2914,6 +2927,38 @@ func (br *brReader) Read(p []byte) (n int, err error) {
 
 func (br *brReader) Close() error {
 	return br.body.Close()
+}
+
+// zsReader wraps a response body so it can lazily
+// call br.NewReader on the first call to Read
+type zsReader struct {
+	_    incomparable
+	body *bodyEOFSignal // underlying HTTP/1 response body framing
+	zs   *zstd.Decoder  // lazily-initialized br reader
+	zerr error          // sticky error
+}
+
+func (zs *zsReader) Read(p []byte) (n int, err error) {
+	if zs.zs == nil {
+		if zs.zerr == nil {
+			var hr *bytes.Buffer
+			zs.zs, zs.zerr = zstd.NewReader(hr)
+		}
+	}
+	zs.body.mu.Lock()
+	if zs.body.closed {
+		err = errReadOnClosedResBody
+	}
+	zs.body.mu.Unlock()
+
+	if err != nil {
+		return 0, err
+	}
+	return zs.zs.Read(p)
+}
+
+func (zs *zsReader) Close() error {
+	return zs.body.Close()
 }
 
 type tlsHandshakeTimeoutError struct{}

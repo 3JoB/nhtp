@@ -182,6 +182,7 @@ var sniffSignatures = []sniffSig{
 	// Archive types
 	&exactSig{sig: unsafeConvert.BytesReflect("\x1F\x8B\x08"), ct: "application/x-gzip"},
 	&exactSig{sig: unsafeConvert.BytesReflect("\x2B\x49\x6E\x73\x6E\x6F\x77\x7A\x69\x6C\x6C\x61\x20\x42\x72\x6F\x74\x6C\x69\x20\x43\x6F\x6D\x70\x72\x65\x73\x73\x6F\x72\x20\x20\x20\x43\x6F\x70\x79\x72\x69\x67\x68\x74\x20\x32\x30\x31\x34\x2D\x32\x30\x31\x39\x0A\x31\x0A"), ct: "application/brotli"},
+	&exactSig{sig: unsafeConvert.BytesReflect("\x28\xB5\x2F\xFD"), ct: "application/zstd"},
 	&exactSig{sig: unsafeConvert.BytesReflect("PK\x03\x04"), ct: "application/zip"},
 	// RAR's signatures are incorrectly defined by the MIME spec as per
 	//    https://github.com/whatwg/mimesniff/issues/63

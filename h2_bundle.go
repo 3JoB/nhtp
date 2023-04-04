@@ -20,7 +20,6 @@ package http
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -46,6 +45,8 @@ import (
 	"github.com/3JoB/unsafeConvert"
 	"github.com/andybalholm/brotli"
 	"github.com/goccy/go-reflect"
+	"github.com/klauspost/compress/gzip"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
 	"golang.org/x/net/idna"
@@ -7084,6 +7085,7 @@ type http2Transport struct {
 	DisableCompression bool
 
 	EnableBrotliCompression bool
+	EnableZSTDCompression   bool
 
 	// AllowHTTP, if true, permits HTTP/2 requests using the insecure,
 	// plain-text "http" scheme. Note that this does not enable h2c support.
@@ -7348,6 +7350,7 @@ type http2clientStream struct {
 	bufPipe       http2pipe // buffered pipe with the flow-controlled response payload
 	requestedGzip bool
 	requestedBr   bool
+	requestedZs   bool
 	isHead        bool
 
 	abortOnce sync.Once
@@ -8351,7 +8354,9 @@ func (cs *http2clientStream) writeRequest(req *Request) (err error) {
 		// We don't request gzip if the request is for a range, since
 		// auto-decoding a portion of a gzipped document will just fail
 		// anyway. See https://golang.org/issue/8923
-		if cc.t.EnableBrotliCompression {
+		if cc.t.EnableZSTDCompression {
+			cs.requestedZs = true
+		} else if cc.t.EnableBrotliCompression {
 			cs.requestedBr = true
 		} else {
 			cs.requestedGzip = true
@@ -8475,7 +8480,7 @@ func (cs *http2clientStream) encodeAndWriteHeaders(req *Request) error {
 	hasTrailers := trailers != ""
 	contentLen := http2actualContentLength(req)
 	hasBody := contentLen != 0
-	hdrs, err := cc.encodeHeaders(req, cs.requestedGzip, cs.requestedBr, trailers, contentLen)
+	hdrs, err := cc.encodeHeaders(req, cs.requestedGzip, cs.requestedBr, cs.requestedZs, trailers, contentLen)
 	if err != nil {
 		return err
 	}
@@ -8822,7 +8827,7 @@ func (cs *http2clientStream) awaitFlowControl(maxBytes int) (taken int32, err er
 var http2errNilRequestURL error = &errs.Err{Op: "http2", Err: "Request.URI is nil"}
 
 // requires cc.wmu be held.
-func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader, addBrHeader bool, trailers string, contentLength int64) ([]byte, error) {
+func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader, addBrHeader, addZsHeader bool, trailers string, contentLength int64) ([]byte, error) {
 	cc.hbuf.Reset()
 	if req.URL == nil {
 		return nil, http2errNilRequestURL
@@ -8948,7 +8953,9 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader, addBrHeade
 		if http2shouldSendReqContentLength(req.Method, contentLength) {
 			f("content-length", strconv.FormatInt(contentLength, 10))
 		}
-		if addBrHeader {
+		if addZsHeader {
+			f("accept-encoding", "zstd")
+		} else if addBrHeader {
 			f("accept-encoding", "br")
 		} else if addGzipHeader {
 			f("accept-encoding", "gzip")
@@ -9333,10 +9340,10 @@ func (rl *http2clientConnReadLoop) processHeaders(f *http2MetaHeadersFrame) erro
 }
 
 var (
-	http2Missing error = &errs.Err{Op: "malformed response from server", Err:"missing status pseudo header"}
-	http2NonStatus error = &errs.Err{Op: "malformed response from server", Err:"malformed non-numeric status pseudo header"}
-	http2TooMany1xx error = &errs.Err{Op: "http2", Err:"too many 1xx informational responses"}
-	http21xxWithEndFlag error = &errs.Err{Op: "http2", Err:"1xx informational response with END_STREAM flag"}
+	http2Missing        error = &errs.Err{Op: "malformed response from server", Err: "missing status pseudo header"}
+	http2NonStatus      error = &errs.Err{Op: "malformed response from server", Err: "malformed non-numeric status pseudo header"}
+	http2TooMany1xx     error = &errs.Err{Op: "http2", Err: "too many 1xx informational responses"}
+	http21xxWithEndFlag error = &errs.Err{Op: "http2", Err: "1xx informational response with END_STREAM flag"}
 )
 
 // may return error types nil, or ConnectionError. Any other error value
@@ -9454,20 +9461,22 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 	cs.bytesRemain = res.ContentLength
 	res.Body = http2transportResponseBody{cs: cs}
 
-	if cs.requestedBr && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "br") {
-		res.Header.Del("Content-Encoding")
-		res.Header.Del("Content-Length")
-		res.ContentLength = -1
-		res.Body = &http2brReader{body: res.Body}
-		res.Uncompressed = true
+	if cs.requestedZs && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "zstd") {
+		res.sethttp2Compress(&http2zsReader{body: res.Body})
+	} else if cs.requestedBr && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "br") {
+		res.sethttp2Compress(&http2brReader{body: res.Body})
 	} else if cs.requestedGzip && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "gzip") {
-		res.Header.Del("Content-Encoding")
-		res.Header.Del("Content-Length")
-		res.ContentLength = -1
-		res.Body = &http2gzipReader{body: res.Body}
-		res.Uncompressed = true
+		res.sethttp2Compress(&http2gzipReader{body: res.Body})
 	}
 	return res, nil
+}
+
+func (res *Response) sethttp2Compress(body io.ReadCloser) {
+	res.Header.Del("Content-Encoding")
+	res.Header.Del("Content-Length")
+	res.ContentLength = -1
+	res.Body = body
+	res.Uncompressed = true
 }
 
 func (rl *http2clientConnReadLoop) processTrailers(cs *http2clientStream, f *http2MetaHeadersFrame) error {
@@ -10098,6 +10107,38 @@ func (br *http2brReader) Close() error {
 		return err
 	}
 	br.brerr = fs.ErrClosed
+	return nil
+}
+
+// zsReader wraps a response body so it can lazily
+// call br.NewReader on the first call to Read
+type http2zsReader struct {
+	_    http2incomparable
+	body io.ReadCloser // underlying Response.Body
+	zs   *zstd.Decoder // lazily-initialized br reader
+	zerr error         // sticky error
+}
+
+func (zs *http2zsReader) Read(p []byte) (n int, err error) {
+	if zs.zerr != nil {
+		return 0, zs.zerr
+	}
+	if zs.zs == nil {
+		var hr *bytes.Buffer
+		zs.zs, err = zstd.NewReader(hr)
+		if err != nil {
+			zs.zerr = err
+			return 0, err
+		}
+	}
+	return zs.zs.Read(p)
+}
+
+func (zs *http2zsReader) Close() error {
+	if err := zs.body.Close(); err != nil {
+		return err
+	}
+	zs.zerr = fs.ErrClosed
 	return nil
 }
 

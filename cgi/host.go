@@ -345,8 +345,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	rw.WriteHeader(statusCode)
 
-	_, err = io.Copy(rw, linebody)
-	if err != nil {
+	if _, err = io.Copy(rw, linebody);err != nil {
 		h.printf("cgi: copy error: %v", err)
 		// And kill the child CGI process so we don't hang on
 		// the deferred cmd.Wait above if the error was just
