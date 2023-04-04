@@ -212,9 +212,9 @@ func singleJoiningSlash(a, b string) string {
 	bslash := strings.HasPrefix(b, "/")
 	switch {
 	case aslash && bslash:
-		return a + b[1:]
+		return fmt.Sprintf("%v%v", a, b[1:])
 	case !aslash && !bslash:
-		return a + "/" + b
+		return fmt.Sprintf("%v/%v", a, b)
 	}
 	return a + b
 }

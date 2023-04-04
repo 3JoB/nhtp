@@ -6,7 +6,6 @@
 package cookiejar
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -15,7 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/3JoB/nhtp"
+	errs "github.com/3JoB/ulib/err"
+
+	http "github.com/3JoB/nhtp"
 	"github.com/3JoB/nhtp/internal/ascii"
 )
 
@@ -439,9 +440,9 @@ func (j *Jar) newEntry(c *http.Cookie, now time.Time, defPath, host string) (e e
 }
 
 var (
-	errIllegalDomain   = errors.New("cookiejar: illegal cookie domain attribute")
-	errMalformedDomain = errors.New("cookiejar: malformed cookie domain attribute")
-	errNoHostname      = errors.New("cookiejar: no host name available (IP only)")
+	errIllegalDomain   error = &errs.Err{Op: "cookiejar", Err: "illegal cookie domain attribute"}
+	errMalformedDomain error = &errs.Err{Op: "cookiejar", Err: "malformed cookie domain attribute"}
+	errNoHostname      error = &errs.Err{Op: "cookiejar", Err: "no host name available (IP only)"}
 )
 
 // endOfTime is the time when session (non-persistent) cookies expire.
