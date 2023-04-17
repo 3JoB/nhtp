@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/3JoB/unsafeConvert"
 	"github.com/3JoB/go-reflect"
+	"github.com/3JoB/unsafeConvert"
 	"golang.org/x/net/http/httpguts"
 
 	"github.com/3JoB/nhtp/httptrace"
@@ -411,7 +411,11 @@ func (t *transferWriter) writeBody(w io.Writer) (err error) {
 //
 // This function is only intended for use in writeBody.
 func (t *transferWriter) doBodyCopy(dst io.Writer, src io.Reader) (n int64, err error) {
-	n, err = io.Copy(dst, src)
+	bufp := copyBufPool.Get().(*[]byte)
+	buf := *bufp
+	defer copyBufPool.Put(bufp)
+
+	n, err = io.CopyBuffer(dst, src, buf)
 	if err != nil && err != io.EOF {
 		t.bodyReadError = err
 	}

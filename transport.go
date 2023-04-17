@@ -27,9 +27,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/3JoB/go-reflect"
 	"github.com/3JoB/unsafeConvert"
 	"github.com/andybalholm/brotli"
-	"github.com/3JoB/go-reflect"
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http/httpguts"
