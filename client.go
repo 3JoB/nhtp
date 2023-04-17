@@ -26,7 +26,7 @@ import (
 
 	errs "github.com/3JoB/ulib/err"
 	"github.com/3JoB/unsafeConvert"
-	"github.com/goccy/go-reflect"
+	"github.com/3JoB/go-reflect"
 
 	"github.com/3JoB/nhtp/internal/ascii"
 )

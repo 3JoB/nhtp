@@ -8,7 +8,7 @@
 package http
 
 import (
-	"github.com/goccy/go-reflect"
+	"github.com/3JoB/go-reflect"
 )
 
 func (e http2StreamError) As(target any) bool {

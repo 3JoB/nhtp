@@ -13,7 +13,7 @@ import (
 	"net/textproto"
 	"time"
 
-	"github.com/goccy/go-reflect"
+	"github.com/3JoB/go-reflect"
 
 	"github.com/3JoB/nhtp/internal/nettrace"
 )

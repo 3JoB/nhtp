@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/3JoB/unsafeConvert"
-	"github.com/goccy/go-reflect"
+	"github.com/3JoB/go-reflect"
 	"golang.org/x/net/http/httpguts"
 
 	"github.com/3JoB/nhtp/httptrace"
