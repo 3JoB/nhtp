@@ -20,9 +20,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/3JoB/ulib/litefmt"
 	"golang.org/x/net/http/httpguts"
 
-	"github.com/3JoB/nhtp"
+	http "github.com/3JoB/nhtp"
 	"github.com/3JoB/nhtp/httptrace"
 	"github.com/3JoB/nhtp/internal/ascii"
 )
@@ -441,7 +442,7 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			prior, ok := outreq.Header["X-Forwarded-For"]
 			omit := ok && prior == nil // Issue 38079: nil now means don't populate the header
 			if len(prior) > 0 {
-				clientIP = strings.Join(prior, ", ") + ", " + clientIP
+				clientIP = litefmt.Sprintf(strings.Join(prior, ", "), ", ", clientIP)
 			}
 			if !omit {
 				outreq.Header.Set("X-Forwarded-For", clientIP)
@@ -536,7 +537,7 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	for k, vv := range res.Trailer {
-		k = http.TrailerPrefix + k
+		k = litefmt.Sprintf(http.TrailerPrefix, k)
 		for _, v := range vv {
 			rw.Header().Add(k, v)
 		}

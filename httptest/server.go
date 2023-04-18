@@ -18,8 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/3JoB/nhtp"
+	http "github.com/3JoB/nhtp"
 	"github.com/3JoB/nhtp/internal/testcert"
+	"github.com/3JoB/ulib/litefmt"
 )
 
 // A Server is an HTTP server listening on a system-chosen port on the
@@ -147,7 +148,7 @@ func (s *Server) Start() {
 	if s.client == nil {
 		s.client = &http.Client{Transport: &http.Transport{}}
 	}
-	s.URL = "http://" + s.Listener.Addr().String()
+	s.URL = litefmt.Sprint("http://", s.Listener.Addr().String())
 	s.wrap()
 	s.goServe()
 	if serveFlag != "" {

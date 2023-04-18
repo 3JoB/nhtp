@@ -26,6 +26,7 @@ import (
 
 	"github.com/3JoB/go-reflect"
 	errs "github.com/3JoB/ulib/err"
+	"github.com/3JoB/ulib/litefmt"
 	"github.com/3JoB/unsafeConvert"
 
 	"github.com/3JoB/nhtp/internal/ascii"
@@ -164,7 +165,7 @@ func refererForURL(lastReq, newReq *url.URL) string {
 		// - creating a race condition
 		// - copying the URL struct manually, which would cause
 		//   maintenance problems down the line
-		auth := lastReq.User.String() + "@"
+		auth := litefmt.Sprintf(lastReq.User.String(), "@")
 		referer = strings.Replace(referer, auth, "", 1)
 	}
 	return referer
@@ -245,7 +246,7 @@ func send(ireq *Request, rt RoundTripper, deadline time.Time) (resp *Response, d
 		password, _ := u.Password()
 		forkReq()
 		req.Header = cloneOrMakeHeader(ireq.Header)
-		req.Header.Set("Authorization", "Basic "+basicAuth(username, password))
+		req.Header.Set("Authorization", litefmt.Sprintf("Basic ", basicAuth(username, password)))
 	}
 
 	if !deadline.IsZero() {
@@ -417,7 +418,7 @@ func setRequestCancel(req *Request, rt RoundTripper, deadline time.Time) (stopTi
 // encoded string in the credentials."
 // It is not meant to be urlencoded.
 func basicAuth(username, password string) string {
-	return base64.StdEncoding.EncodeToString(unsafeConvert.BytesReflect(fmt.Sprintf("%v:%v", username, password)))
+	return base64.StdEncoding.EncodeToString(unsafeConvert.BytesReflect(fmt.Sprint(username, ":", password)))
 }
 
 // Get issues a GET to the specified URL. If the response is one of
@@ -1023,7 +1024,7 @@ func isDomainOrSubdomain(sub, parent string) bool {
 func stripPassword(u *url.URL) string {
 	_, passSet := u.User.Password()
 	if passSet {
-		return strings.Replace(u.String(), u.User.String()+"@", u.User.Username()+":***@", 1)
+		return strings.Replace(u.String(), litefmt.Sprintf(u.User.String(), "@"), litefmt.Sprintf(u.User.Username(), ":***@"), 1)
 	}
 	return u.String()
 }

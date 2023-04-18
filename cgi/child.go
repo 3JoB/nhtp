@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/3JoB/ulib/litefmt"
+
 	"github.com/3JoB/nhtp"
 )
 
@@ -94,7 +96,7 @@ func RequestFromMap(params map[string]string) (*http.Request, error) {
 	uriStr := params["REQUEST_URI"]
 	if uriStr == "" {
 		// Fallback to SCRIPT_NAME, PATH_INFO and QUERY_STRING.
-		uriStr = params["SCRIPT_NAME"] + params["PATH_INFO"]
+		uriStr = litefmt.Sprint(params["SCRIPT_NAME"], params["PATH_INFO"])
 		s := params["QUERY_STRING"]
 		if s != "" {
 			uriStr += "?" + s
@@ -109,11 +111,11 @@ func RequestFromMap(params map[string]string) (*http.Request, error) {
 
 	if r.Host != "" {
 		// Hostname is provided, so we can reasonably construct a URL.
-		rawurl := r.Host + uriStr
+		rawurl := litefmt.Sprint(r.Host, uriStr)
 		if r.TLS == nil {
-			rawurl = "http://" + rawurl
+			rawurl = litefmt.Sprint("http://", rawurl)
 		} else {
-			rawurl = "https://" + rawurl
+			rawurl = litefmt.Sprint("https://", rawurl)
 		}
 		url, err := url.Parse(rawurl)
 		if err != nil {

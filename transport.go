@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/3JoB/go-reflect"
+	"github.com/3JoB/ulib/litefmt"
 	"github.com/3JoB/unsafeConvert"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/gzip"
@@ -865,7 +866,7 @@ func (cm *connectMethod) proxyAuth() string {
 	if u := cm.proxyURL.User; u != nil {
 		username := u.Username()
 		password, _ := u.Password()
-		return "Basic " + basicAuth(username, password)
+		return litefmt.Sprintf("Basic ", basicAuth(username, password))
 	}
 	return ""
 }

@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/3JoB/ulib/litefmt"
+
 	"github.com/3JoB/nhtp/internal/safefilepath"
 )
 
@@ -71,7 +73,7 @@ func mapOpenError(originalErr error, name string, sep rune, stat func(string) (f
 // Open implements FileSystem using os.Open, opening files for reading rooted
 // and relative to the directory d.
 func (d Dir) Open(name string) (File, error) {
-	path, err := safefilepath.FromFS(path.Clean("/" + name))
+	path, err := safefilepath.FromFS(path.Clean(litefmt.Sprintf("/" + name)))
 	if err != nil {
 		return nil, errors.New("http: invalid or unsafe file path")
 	}

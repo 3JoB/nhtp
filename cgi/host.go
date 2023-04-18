@@ -16,7 +16,6 @@ package cgi
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -28,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/3JoB/ulib/litefmt"
 	"github.com/3JoB/unsafeConvert"
 	"github.com/grafana/regexp"
 	"golang.org/x/net/http/httpguts"
@@ -141,28 +141,28 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	env := []string{
 		"SERVER_SOFTWARE=go",
 		"SERVER_PROTOCOL=HTTP/1.1",
-		"HTTP_HOST=" + req.Host,
+		litefmt.Sprintf("HTTP_HOST=", req.Host),
 		"GATEWAY_INTERFACE=CGI/1.1",
-		"REQUEST_METHOD=" + req.Method,
-		"QUERY_STRING=" + req.URL.RawQuery,
-		"REQUEST_URI=" + req.URL.RequestURI(),
-		"PATH_INFO=" + pathInfo,
-		"SCRIPT_NAME=" + root,
-		"SCRIPT_FILENAME=" + h.Path,
-		"SERVER_PORT=" + port,
+		litefmt.Sprintf("REQUEST_METHOD=", req.Method),
+		litefmt.Sprintf("QUERY_STRING=", req.URL.RawQuery),
+		litefmt.Sprintf("REQUEST_URI=", req.URL.RequestURI()),
+		litefmt.Sprintf("PATH_INFO=", pathInfo),
+		litefmt.Sprintf("SCRIPT_NAME=", root),
+		litefmt.Sprintf("SCRIPT_FILENAME=" + h.Path),
+		litefmt.Sprintf("SERVER_PORT=", port),
 	}
 
 	if remoteIP, remotePort, err := net.SplitHostPort(req.RemoteAddr); err == nil {
-		env = append(env, "REMOTE_ADDR="+remoteIP, "REMOTE_HOST="+remoteIP, "REMOTE_PORT="+remotePort)
+		env = append(env, litefmt.Sprintf("REMOTE_ADDR=", remoteIP), litefmt.Sprintf("REMOTE_HOST=", remoteIP), litefmt.Sprintf("REMOTE_PORT=", remotePort))
 	} else {
 		// could not parse ip:port, let's use whole RemoteAddr and leave REMOTE_PORT undefined
-		env = append(env, "REMOTE_ADDR="+req.RemoteAddr, "REMOTE_HOST="+req.RemoteAddr)
+		env = append(env, litefmt.Sprintf("REMOTE_ADDR=", req.RemoteAddr), litefmt.Sprintf("REMOTE_HOST=", req.RemoteAddr))
 	}
 
 	if hostDomain, _, err := net.SplitHostPort(req.Host); err == nil {
-		env = append(env, "SERVER_NAME="+hostDomain)
+		env = append(env, litefmt.Sprintf("SERVER_NAME=", hostDomain))
 	} else {
-		env = append(env, "SERVER_NAME="+req.Host)
+		env = append(env, litefmt.Sprintf("SERVER_NAME=", req.Host))
 	}
 
 	if req.TLS != nil {
@@ -179,14 +179,14 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if k == "COOKIE" {
 			joinStr = "; "
 		}
-		env = append(env, "HTTP_"+k+"="+strings.Join(v, joinStr))
+		env = append(env, litefmt.Sprintf("HTTP_", k, "=", strings.Join(v, joinStr)))
 	}
 
 	if req.ContentLength > 0 {
-		env = append(env, fmt.Sprintf("CONTENT_LENGTH=%d", req.ContentLength))
+		env = append(env, litefmt.Sprint("CONTENT_LENGTH=", unsafeConvert.Int64ToString(req.ContentLength)))
 	}
 	if ctype := req.Header.Get("Content-Type"); ctype != "" {
-		env = append(env, "CONTENT_TYPE="+ctype)
+		env = append(env, litefmt.Sprintf("CONTENT_TYPE=", ctype))
 	}
 
 	envPath := os.Getenv("PATH")

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/3JoB/ulib/litefmt"
 	"github.com/3JoB/unsafeConvert"
 
 	"github.com/3JoB/nhtp/internal/ascii"
@@ -410,7 +411,7 @@ func sanitizeCookieValue(v string) string {
 		return v
 	}
 	if strings.ContainsAny(v, " ,") {
-		return `"` + v + `"`
+		return litefmt.Sprintf(`"`, v, `"`)
 	}
 	return v
 }

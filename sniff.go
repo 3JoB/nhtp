@@ -194,6 +194,7 @@ var sniffSignatures = []sniffSig{
 	&exactSig{sig: unsafeConvert.BytesReflect("Rar!\x1A\x07\x01\x00"), ct: "application/x-rar-compressed"}, // RAR v5+
 
 	&exactSig{sig: unsafeConvert.BytesReflect("\x00\x61\x73\x6D"), ct: "application/wasm"},
+	&exactSig{sig: unsafeConvert.BytesReflect("FLV"), ct: "video/x-flv"},
 
 	textSig{}, // should be last
 }
